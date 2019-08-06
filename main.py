@@ -117,6 +117,7 @@ output_variable = 0
 xe = np.zeros((n, n, nx))
 ye = np.zeros((n, n, ny))
 
+# x0_list needs to take in values of the sliders
 x0_list = np.ones(nx)
 for ix in range(nx):
     xe[:,:, ix] = x0_list[ix]
@@ -148,10 +149,17 @@ N = 500
 x = np.linspace(0, 100, N)
 y = np.linspace(0, 100, N)
 
+def callback(attr, old, new):
+    print("Old value: ", old)
+    print("New value: ", new)
 
+
+# Put units in later
 mach_slider = Slider(start=min(mach), end=max(mach), value=0, step=0.05, title="Mach")
 alt_slider = Slider(start=min(alt), end=max(alt), value=0, step=1, title="Altitude")
 throttle_slider = Slider(start=min(throttle), end=max(throttle), value=0, step=0.05, title="Throttle")
+
+mach_slider.on_change('value', callback)
 
 contour_plot = figure(tooltips=[("x", "$x"), ("y", "$y"), ("value", "@image")])
 contour_plot.x_range.range_padding = 0
@@ -177,7 +185,7 @@ s3.xaxis.axis_label = "Mach"
 s3.yaxis.axis_label = "Thrust"
 s3.square(x, y2, size=10, color="olive", alpha=0.5)
 
-
+# Layout for sliders
 layout = row(
     column(mach_slider, alt_slider, throttle_slider),
 )
