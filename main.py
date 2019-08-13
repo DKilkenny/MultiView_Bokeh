@@ -64,7 +64,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -188,7 +188,7 @@ class UnstructuredMetaModelVisualization(object):
 
         return contour_plot
 
-    def alt_vs_thrust_subplot(self):
+    def mach_vs_thrust_subplot(self):
 
         # print(self.source.data['z'])
         mach_value = self.mach_slider.value
@@ -203,14 +203,14 @@ class UnstructuredMetaModelVisualization(object):
         
         print("Z data being sliced into for altitude: \n", self.Z)
 
-        s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
+        s1 = figure(plot_width=500, plot_height=200, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
         s1.xaxis.axis_label = "Thrust"
         s1.yaxis.axis_label = "Altitude"
         s1.line(self.source.data['left_slice'], self.slider_source.data['alt'])
 
         return s1
 
-    def mach_vs_thrust_subplot(self):
+    def alt_vs_thrust_subplot(self):
 
         # print(self.source.data['z'])
         alt_value = self.alt_slider.value
@@ -224,7 +224,7 @@ class UnstructuredMetaModelVisualization(object):
             self.source.data['bot_slice'] = z_data
             # print("KeyError")
 
-        s2 = figure(plot_width=500, plot_height=200, x_range=(0,max(self.mach)), title="Mach vs Thrust")
+        s2 = figure(plot_width=200, plot_height=500, x_range=(0,max(self.mach)), title="Mach vs Thrust")
         s2.xaxis.axis_label = "Mach"
         s2.yaxis.axis_label = "Thrust"
         s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
