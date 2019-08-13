@@ -65,7 +65,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -99,4 +99,27 @@ info = {'num_of_inputs':3,
 }
 
 viz = UnstructuredMetaModelVisualization(info)
-# viz.contour_data()
+
+
+
+    # def contour_update(self, attr, old, new):
+    #     self.layout.children[1] = self.contour_data()
+
+    # def subplot(self):
+    #     # print(self.source.data['z'])
+    #     mach_value = self.mach_slider.value
+
+    #     mach_index = np.where(np.around(self.mach, 5) == np.around(mach_value, 5))[0]
+    #     z_data = self.Z[mach_index].flatten()
+
+    #     self.source.data = dict(left_slice=z_data)
+
+    #     s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
+    #     s1.xaxis.axis_label = "Thrust"
+    #     s1.yaxis.axis_label = "Altitude"
+    #     s1.line(self.source.data['left_slice'], self.slider_source.data['alt'])
+
+    #     return s1
+
+    # def subplot_update(self, attr, old, new):
+    #     self.layout.children[0] = self.subplot()

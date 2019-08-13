@@ -64,7 +64,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -104,13 +104,14 @@ class UnstructuredMetaModelVisualization(object):
 
         self.output_variable = self.info['output_variable']
 
-        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y, alt=self.alt, mach=self.mach, throttle=self.throttle))
+        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
+        self.slider_source = ColumnDataSource(data=dict(alt=self.alt, mach=self.mach, throttle=self.throttle))
 
         self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
-        self.mach_slider.on_change('value', self.update)
+        self.mach_slider.on_change('value', self.alt_vs_thrust_subplot_update)
 
         self.alt_slider = Slider(start=min(self.alt), end=max(self.alt), value=0, step=self.alt_step, title="Altitude")
-        self.alt_slider.on_change('value', self.update)
+        self.alt_slider.on_change('value', self.mach_vs_thrust_subplot_update)
 
         self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
         self.throttle_slider.on_change('value', self.update)
@@ -118,9 +119,10 @@ class UnstructuredMetaModelVisualization(object):
         self.sliders = row(
             column(self.mach_slider, self.alt_slider, self.throttle_slider),
         )
-        self.layout = row(self.contour_data(), self.sliders)
-
+        self.layout = row(self.contour_data(), self.alt_vs_thrust_subplot(), self.sliders)
+        self.layout2 = row(self.mach_vs_thrust_subplot())
         curdoc().add_root(self.layout)
+        curdoc().add_root(self.layout2)
         curdoc().title = 'MultiView'
     
     def make_predictions(self, data):
@@ -165,10 +167,13 @@ class UnstructuredMetaModelVisualization(object):
         ye[:, :, :] = self.make_predictions(xe.reshape((n**2, self.nx))).reshape((n, n, self.ny))
         Z = ye[:, :, self.output_variable]
         Z = Z.reshape(n, n)
+        self.Z = Z
 
-        self.source.data = dict(z=Z)
-
-        ### Create Contour Plot
+        # print(self.source.data['z'])
+        try:
+            self.source.add(Z, 'z')
+        except KeyError:
+            print("KeyError")
 
         contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
         contour_plot.x_range.range_padding = 0
@@ -183,9 +188,59 @@ class UnstructuredMetaModelVisualization(object):
 
         return contour_plot
 
+    def alt_vs_thrust_subplot(self):
+
+        # print(self.source.data['z'])
+        mach_value = self.mach_slider.value
+
+        mach_index = np.where(np.around(self.mach, 5) == np.around(mach_value, 5))[0]
+        z_data = self.Z[mach_index].flatten()
+
+        try:
+            self.source.add(z_data, 'left_slice')
+        except KeyError:
+            self.source.data['left_slice'] = z_data
+        
+        print("Z data being sliced into for altitude: \n", self.Z)
+
+        s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
+        s1.xaxis.axis_label = "Thrust"
+        s1.yaxis.axis_label = "Altitude"
+        s1.line(self.source.data['left_slice'], self.slider_source.data['alt'])
+
+        return s1
+
+    def mach_vs_thrust_subplot(self):
+
+        # print(self.source.data['z'])
+        alt_value = self.alt_slider.value
+
+        alt_index = np.where(np.around(self.alt, 5) == np.around(alt_value, 5))[0]
+        z_data = self.Z[:,alt_index].flatten()
+
+        try:
+            self.source.add(z_data, 'bot_slice')
+        except KeyError:
+            self.source.data['bot_slice'] = z_data
+            # print("KeyError")
+
+        s2 = figure(plot_width=500, plot_height=200, x_range=(0,max(self.mach)), title="Mach vs Thrust")
+        s2.xaxis.axis_label = "Mach"
+        s2.yaxis.axis_label = "Thrust"
+        s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
+        
+        print("Z data being sliced into for Mach: \n", self.Z)
+
+        return s2
+
     def update(self, attr, old, new):
         self.layout.children[0] = self.contour_data()
 
+    def alt_vs_thrust_subplot_update(self, attr, old, new):
+        self.layout.children[1] = self.alt_vs_thrust_subplot()
+
+    def mach_vs_thrust_subplot_update(self, attr, old, new):
+        self.layout2.children[0] = self.mach_vs_thrust_subplot()
 
 # def setup():
 #     viz = UnstructuredMetaModelVisualization()
