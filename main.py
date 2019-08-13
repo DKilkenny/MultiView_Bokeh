@@ -80,24 +80,12 @@ prob.model.add_subsystem('interp', interp)
 prob.setup()
 
 
-
 class UnstructuredMetaModelVisualization(object):
-
+    
     def __init__(self, info):
         self.info = info
 
-        self.x0_list = np.ones(self.info['num_of_inputs'])
-        self.x_index = 0
-        self.y_index = 1
-        self.output_variable = self.info['output_variable']
-        self.dist_range = self.info['dist_range']
-        xt = self.info['scatter_points'][0]
-
-        self.N = self.info['resolution']
         self.n = 50
-        self.x = np.linspace(0, 100, self.N)
-        self.y = np.linspace(0, 100, self.N)
-
         self.mach = np.linspace(min(xt[:, 0]), max(xt[:, 0]), self.n)
         self.mach_step = self.mach[1] - self.mach[0]
         self.alt = np.linspace(min(xt[:, 1]), max(xt[:, 1]), self.n)
@@ -105,118 +93,42 @@ class UnstructuredMetaModelVisualization(object):
         self.throttle = np.linspace(min(xt[:, 2]), max(xt[:, 2]), self.n)
         self.throttle_step = self.throttle[1] - self.throttle[0]
 
-        self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
-        self.alt_slider = Slider(start=min(self.alt), end=max(self.alt), value=0, step=self.alt_step, title="Altitude")
-        self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
+        self.x = np.linspace(0, 100, self.n)
+        self.y = np.linspace(0, 100, self.n)
+
+        self.nx = self.info['num_of_inputs']
+        self.ny = self.info['num_of_outputs']
+
+        self.x_index = 0
+        self.y_index = 1
+
+        self.output_variable = self.info['output_variable']
 
         self.source = ColumnDataSource(data=dict(x=self.x, y=self.y, alt=self.alt, mach=self.mach, throttle=self.throttle))
 
-    def plot_contour(self):
+        self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
+        self.mach_slider.on_change('value', self.update)
 
-        n = self.info['resolution']
-        nx = self.info['num_of_inputs']
-        ny = self.info['num_of_outputs']
-        xt = self.info['scatter_points'][0]
+        self.alt_slider = Slider(start=min(self.alt), end=max(self.alt), value=0, step=self.alt_step, title="Altitude")
+        self.alt_slider.on_change('value', self.update)
 
-        xe = np.zeros((n, n, nx))
-        ye = np.zeros((n, n, ny))
+        self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
+        self.throttle_slider.on_change('value', self.update)
 
-        for ix in range(nx):
-            xe[:,:, ix] = self.x0_list[ix]
-        xlins = np.linspace(min(self.mach), max(self.mach), n)
-        ylins = np.linspace(min(self.alt), max(self.alt), n)
-
-        X, Y = np.meshgrid(xlins, ylins)
-        xe[:,:, self.x_index] = X
-        xe[:,:, self.y_index] = Y
-
-        ye[:,:,:] = self.make_predictions(xe.reshape((n**2, nx))).reshape((n, n, ny))
-        self.Z = ye[:,:,self.output_variable].flatten()
-
-        self.Z = self.Z.reshape(n, n)
-        
-        self.source.add(self.Z, name='Z')
-
-
-
-    def layout_plots(self):
-
-        output_file("layout.html")
-
-        mach = self.mach
-        alt = self.alt
-        throttle = self.throttle
-
-         
-
-        contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
-        contour_plot.x_range.range_padding = 0
-        contour_plot.y_range.range_padding = 0
-        contour_plot.plot_width = 500
-        contour_plot.plot_height = 500
-        contour_plot.xaxis.axis_label = "Mach"
-        contour_plot.yaxis.axis_label = "Altitude"
-        contour_plot.min_border_left = 100
-        # must give a vector of image data for image parameter
-        contour_plot.image(image=[self.source.data['Z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
-
-        # Altitude vs Thrust
-        try:
-            s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(alt)), title="Altitude vs Thrust")
-            s1.xaxis.axis_label = "Thrust"
-            s1.yaxis.axis_label = "Altitude"
-            s1.line(self.source.data['left_slice'], self.source.data['alt'], source = self.source)
-        except KeyError:
-            print('Left slice is not part of source data')
-            pass
-
-        # Mach vs Thrust
-        try:
-            s3 = figure(plot_width=500, plot_height=200, x_range=(0,max(mach)), title='Mach vs Thrust')
-            s3.xaxis.axis_label = "Mach"
-            s3.yaxis.axis_label = "Thrust"
-            s3.line(self.source.data['mach'], self.source.data['bot_slice'], source = self.source)
-        except KeyError:
-            print('Bottom slice is not a part of source data')
-
-        layout = row(
+        self.sliders = row(
             column(self.mach_slider, self.alt_slider, self.throttle_slider),
         )
-        grid = gridplot([[s1, contour_plot, layout], [None, s3]])
+        self.layout = row(self.contour_data(), self.sliders)
 
-
-        # show the results
-        curdoc().add_root(grid)
-
-    # def alt_vs_thrust_callback(self, attr, old, new):
-    #     mach_index = np.where(np.around(self.mach, 5) == np.around(new, 5))[0]
-    #     self.z_data = self.Z[mach_index].flatten()
-
-    #     self.x0_list[0] = np.around(new, 5)
-    #     print(new)
-    #     self.plot_contour()
-    #     # self.layout_plots()
-    #     # self.source.add(self.z_data, name='left_slice')
-    #     # self.layout_plots()
-
-
-    # def mach_vs_thrust_callback(self, attr, old, new):
-    #     alt_index = np.where(np.around(self.alt, 5) == np.around(new, 5))[0]
-    #     z_data = self.Z[alt_index].flatten()
-
-    #     self.source.add(z_data, name='bot_slice')
-
-    def contour_callback(self, attr, old, new):
-
-        
-        pass
-
-    def make_predictions(self, x):
+        curdoc().add_root(self.layout)
+        curdoc().title = 'MultiView'
+    
+    def make_predictions(self, data):
         thrust = []
         tsfc = []
         print("Making Predictions")
 
-        for i, j, k in x:
+        for i, j, k in data:
             prob['interp.Mach'] = i
             prob['interp.Alt'] = j
             prob['interp.Throttle'] = k
@@ -229,6 +141,209 @@ class UnstructuredMetaModelVisualization(object):
         tsfc = np.asarray(tsfc)
 
         return np.stack([thrust, tsfc], axis=-1)
+
+    def contour_data(self):
+
+        mach_value = self.mach_slider.value
+        alt_value = self.alt_slider.value
+        throttle_value = self.throttle_slider.value
+
+        n = self.n
+        xe = np.zeros((n, n, self.nx))
+        ye = np.zeros((n, n, self.ny))
+        x0_list = [mach_value, alt_value, throttle_value]
+
+        for ix in range(self.nx):
+            xe[:, :, ix] = x0_list[ix]
+        xlins = np.linspace(min(self.mach), max(self.mach), n)
+        ylins = np.linspace(min(self.alt), max(self.alt), n)
+
+        X, Y = np.meshgrid(xlins, ylins)
+        xe[:, :, self.x_index] = X
+        xe[:, :, self.y_index] = Y
+
+        ye[:, :, :] = self.make_predictions(xe.reshape((n**2, self.nx))).reshape((n, n, self.ny))
+        Z = ye[:, :, self.output_variable]
+        Z = Z.reshape(n, n)
+
+        self.source.data = dict(z=Z)
+
+        ### Create Contour Plot
+
+        contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
+        contour_plot.x_range.range_padding = 0
+        contour_plot.y_range.range_padding = 0
+        contour_plot.plot_width = 500
+        contour_plot.plot_height = 500
+        contour_plot.xaxis.axis_label = "Mach"
+        contour_plot.yaxis.axis_label = "Altitude"
+        contour_plot.min_border_left = 100
+
+        contour_plot.image(image=[self.source.data['z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
+
+        return contour_plot
+
+    def update(self, attr, old, new):
+        self.layout.children[0] = self.contour_data()
+
+
+# def setup():
+#     viz = UnstructuredMetaModelVisualization()
+
+
+
+
+
+
+
+# class UnstructuredMetaModelVisualization(object):
+
+#     def __init__(self, info):
+#         self.info = info
+
+#         self.x0_list = np.ones(self.info['num_of_inputs'])
+#         self.x_index = 0
+#         self.y_index = 1
+#         self.output_variable = self.info['output_variable']
+#         self.dist_range = self.info['dist_range']
+#         xt = self.info['scatter_points'][0]
+
+#         self.N = self.info['resolution']
+#         self.n = 50
+#         self.x = np.linspace(0, 100, self.N)
+#         self.y = np.linspace(0, 100, self.N)
+
+#         self.mach = np.linspace(min(xt[:, 0]), max(xt[:, 0]), self.n)
+#         self.mach_step = self.mach[1] - self.mach[0]
+#         self.alt = np.linspace(min(xt[:, 1]), max(xt[:, 1]), self.n)
+#         self.alt_step = self.alt[1] - self.alt[0]
+#         self.throttle = np.linspace(min(xt[:, 2]), max(xt[:, 2]), self.n)
+#         self.throttle_step = self.throttle[1] - self.throttle[0]
+
+#         self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
+#         self.alt_slider = Slider(start=min(self.alt), end=max(self.alt), value=0, step=self.alt_step, title="Altitude")
+#         self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
+
+#         self.source = ColumnDataSource(data=dict(x=self.x, y=self.y, alt=self.alt, mach=self.mach, throttle=self.throttle))
+
+#     def plot_contour(self):
+
+#         n = self.info['resolution']
+#         nx = self.info['num_of_inputs']
+#         ny = self.info['num_of_outputs']
+#         xt = self.info['scatter_points'][0]
+
+#         xe = np.zeros((n, n, nx))
+#         ye = np.zeros((n, n, ny))
+
+#         for ix in range(nx):
+#             xe[:,:, ix] = self.x0_list[ix]
+#         xlins = np.linspace(min(self.mach), max(self.mach), n)
+#         ylins = np.linspace(min(self.alt), max(self.alt), n)
+
+#         X, Y = np.meshgrid(xlins, ylins)
+#         xe[:,:, self.x_index] = X
+#         xe[:,:, self.y_index] = Y
+
+#         ye[:,:,:] = self.make_predictions(xe.reshape((n**2, nx))).reshape((n, n, ny))
+#         self.Z = ye[:,:,self.output_variable].flatten()
+
+#         self.Z = self.Z.reshape(n, n)
+        
+#         self.source.add(self.Z, name='Z')
+
+
+
+#     def layout_plots(self):
+
+#         output_file("layout.html")
+
+#         mach = self.mach
+#         alt = self.alt
+#         throttle = self.throttle
+
+         
+
+#         contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
+#         contour_plot.x_range.range_padding = 0
+#         contour_plot.y_range.range_padding = 0
+#         contour_plot.plot_width = 500
+#         contour_plot.plot_height = 500
+#         contour_plot.xaxis.axis_label = "Mach"
+#         contour_plot.yaxis.axis_label = "Altitude"
+#         contour_plot.min_border_left = 100
+#         # must give a vector of image data for image parameter
+#         contour_plot.image(image=[self.source.data['Z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
+
+#         # Altitude vs Thrust
+#         try:
+#             s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(alt)), title="Altitude vs Thrust")
+#             s1.xaxis.axis_label = "Thrust"
+#             s1.yaxis.axis_label = "Altitude"
+#             s1.line(self.source.data['left_slice'], self.source.data['alt'], source = self.source)
+#         except KeyError:
+#             print('Left slice is not part of source data')
+#             pass
+
+#         # Mach vs Thrust
+#         try:
+#             s3 = figure(plot_width=500, plot_height=200, x_range=(0,max(mach)), title='Mach vs Thrust')
+#             s3.xaxis.axis_label = "Mach"
+#             s3.yaxis.axis_label = "Thrust"
+#             s3.line(self.source.data['mach'], self.source.data['bot_slice'], source = self.source)
+#         except KeyError:
+#             print('Bottom slice is not a part of source data')
+
+#         layout = row(
+#             column(self.mach_slider, self.alt_slider, self.throttle_slider),
+#         )
+#         grid = gridplot([[s1, contour_plot, layout], [None, s3]])
+
+
+#         # show the results
+#         curdoc().add_root(grid)
+
+#     # def alt_vs_thrust_callback(self, attr, old, new):
+#     #     mach_index = np.where(np.around(self.mach, 5) == np.around(new, 5))[0]
+#     #     self.z_data = self.Z[mach_index].flatten()
+
+#     #     self.x0_list[0] = np.around(new, 5)
+#     #     print(new)
+#     #     self.plot_contour()
+#     #     # self.layout_plots()
+#     #     # self.source.add(self.z_data, name='left_slice')
+#     #     # self.layout_plots()
+
+
+#     # def mach_vs_thrust_callback(self, attr, old, new):
+#     #     alt_index = np.where(np.around(self.alt, 5) == np.around(new, 5))[0]
+#     #     z_data = self.Z[alt_index].flatten()
+
+#     #     self.source.add(z_data, name='bot_slice')
+
+#     def contour_callback(self, attr, old, new):
+
+        
+#         pass
+
+#     def make_predictions(self, x):
+#         thrust = []
+#         tsfc = []
+#         print("Making Predictions")
+
+#         for i, j, k in x:
+#             prob['interp.Mach'] = i
+#             prob['interp.Alt'] = j
+#             prob['interp.Throttle'] = k
+#             prob.run_model()
+#             thrust.append(float(prob['interp.Thrust']))
+#             tsfc.append(float(prob['interp.TSFC']))
+
+#         # Cast as np arrays to concatenate them together at the end
+#         thrust = np.asarray(thrust)
+#         tsfc = np.asarray(tsfc)
+
+#         return np.stack([thrust, tsfc], axis=-1)
 
 # info = {'num_of_inputs':3,
 #         'num_of_outputs':2,

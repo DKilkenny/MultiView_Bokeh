@@ -79,6 +79,10 @@ prob = om.Problem()
 prob.model.add_subsystem('interp', interp)
 prob.setup()
 
+
+### Start of class ###
+
+
 mach = np.linspace(min(xt[:, 0]), max(xt[:, 0]), 50)
 mach_step = mach[1] - mach[0]
 alt = np.linspace(min(xt[:, 1]), max(xt[:, 1]), 50)
@@ -178,128 +182,6 @@ layout = row(contour_data(), sliders)
 curdoc().add_root(layout)
 curdoc().title = 'MultiView'
 
-
-
-
-
-
-
-
-
-
-
-
-
-# def contour_data(attrname, old, new):
-    
-#     # Get the current slider values
-#     mach_value = mach_slider.value
-#     alt_value = alt_slider.value
-#     throttle_value = throttle_slider.value
-
-#     n = 50
-#     nx = 3
-#     ny = 2
-
-#     xe = np.zeros((n, n, nx))
-#     ye = np.zeros((n, n, ny))
-    
-#     x0_list = [mach_value, alt_value, throttle_value]
-
-#     for ix in range(nx):
-#         xe[:,:, ix] = x0_list[ix]
-#     xlins = np.linspace(min(mach), max(mach), n)
-#     ylins = np.linspace(min(alt), max(alt), n)
-
-#     X, Y = np.meshgrid(xlins, ylins)
-#     xe[:,:, 0] = X
-#     xe[:,:, 1] = Y
-    
-#     # print(xe)
-#     ye[:,:,:] = make_predictions(xe.reshape((n**2, nx))).reshape((n, n, ny))
-#     Z = ye[:,:,0].flatten()
-#     Z = Z.reshape(n, n)
-    
-#     source.data = dict(z=Z)
-#     # print(source.data['z'])
-
-
-#     contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
-#     contour_plot.x_range.range_padding = 0
-#     contour_plot.y_range.range_padding = 0
-#     contour_plot.plot_width = 500
-#     contour_plot.plot_height = 500
-#     # contour_plot.source = 
-#     contour_plot.xaxis.axis_label = "Mach"
-#     contour_plot.yaxis.axis_label = "Altitude"
-#     contour_plot.min_border_left = 100
-#     # must give a vector of image data for image parameter
-#     contour_plot.image(image=[source.data['z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
-
-#     return contour_plot
-
-
-# def make_predictions(x):
-#     thrust = []
-#     tsfc = []
-#     print("Making Predictions")
-
-#     for i, j, k in x:
-#         prob['interp.Mach'] = i
-#         prob['interp.Alt'] = j
-#         prob['interp.Throttle'] = k
-#         prob.run_model()
-#         thrust.append(float(prob['interp.Thrust']))
-#         tsfc.append(float(prob['interp.TSFC']))
-
-#     # Cast as np arrays to concatenate them together at the end
-#     thrust = np.asarray(thrust)
-#     tsfc = np.asarray(tsfc)
-
-#     return np.stack([thrust, tsfc], axis=-1)
-
-# def contour():
-
-#     contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
-#     contour_plot.x_range.range_padding = 0
-#     contour_plot.y_range.range_padding = 0
-#     contour_plot.plot_width = 500
-#     contour_plot.plot_height = 500
-#     # contour_plot.source = 
-#     contour_plot.xaxis.axis_label = "Mach"
-#     contour_plot.yaxis.axis_label = "Altitude"
-#     contour_plot.min_border_left = 100
-#     # must give a vector of image data for image parameter
-#     contour_plot.image(image=[source.data['z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
-
-#     return contour_plot
-
-# # contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
-# # contour_plot.x_range.range_padding = 0
-# # contour_plot.y_range.range_padding = 0
-# # contour_plot.plot_width = 500
-# # contour_plot.plot_height = 500
-# # # contour_plot.source = 
-# # contour_plot.xaxis.axis_label = "Mach"
-# # contour_plot.yaxis.axis_label = "Altitude"
-# # contour_plot.min_border_left = 100
-# # # must give a vector of image data for image parameter
-# # contour_plot.image(image=[source.data['z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
-
-
-# for w in [mach_slider, alt_slider, throttle_slider]:
-#     w.on_change('value', contour_data)
-#     print(source.data['z'])
-
-# # Layout for sliders
-# layout = row(
-#     column(mach_slider, alt_slider, throttle_slider),
-# )
-# # make a grid
-# grid = gridplot([[contour_data(), layout]])
-
-# # show the results
-# curdoc().add_root(grid)
 
 
 
