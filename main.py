@@ -104,9 +104,12 @@ class UnstructuredMetaModelVisualization(object):
         self.alt_step = self.alt[1] - self.alt[0]
         self.throttle = np.linspace(min(xt[:, 2]), max(xt[:, 2]), self.n)
         self.throttle_step = self.throttle[1] - self.throttle[0]
-        # param = zip(mach, alt, throttle)
 
-        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
+        self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
+        self.alt_slider = Slider(start=min(self.alt), end=max(self.alt), value=0, step=self.alt_step, title="Altitude")
+        self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
+
+        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y, alt=self.alt, mach=self.mach, throttle=self.throttle))
 
     def plot_contour(self):
 
@@ -144,13 +147,7 @@ class UnstructuredMetaModelVisualization(object):
         alt = self.alt
         throttle = self.throttle
 
-
-        mach_slider = Slider(start=min(mach), end=max(mach), value=0, step=self.mach_step, title="Mach")
-        alt_slider = Slider(start=min(alt), end=max(alt), value=0, step=self.alt_step, title="Altitude")
-        throttle_slider = Slider(start=min(throttle), end=max(throttle), value=0, step=self.throttle_step, title="Throttle")
-
-        mach_slider.on_change('value', self.alt_vs_thrust_callback)
-        alt_slider.on_change('value', self.mach_vs_thrust_callback)
+         
 
         contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
         contour_plot.x_range.range_padding = 0
@@ -161,27 +158,58 @@ class UnstructuredMetaModelVisualization(object):
         contour_plot.yaxis.axis_label = "Altitude"
         contour_plot.min_border_left = 100
         # must give a vector of image data for image parameter
-        contour_plot.image(image=[self.source.data['Z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
+        contour_plot.image(image=[self.source.data['Z']], x=0, y=0, dw=max(mach), dh=max(alt), palette="Viridis11")
+
+        # Altitude vs Thrust
+        try:
+            s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(alt)), title="Altitude vs Thrust")
+            s1.xaxis.axis_label = "Thrust"
+            s1.yaxis.axis_label = "Altitude"
+            s1.line(self.source.data['left_slice'], self.source.data['alt'], source = self.source)
+        except KeyError:
+            print('Left slice is not part of source data')
+            pass
+
+        # Mach vs Thrust
+        try:
+            s3 = figure(plot_width=500, plot_height=200, x_range=(0,max(mach)), title='Mach vs Thrust')
+            s3.xaxis.axis_label = "Mach"
+            s3.yaxis.axis_label = "Thrust"
+            s3.line(self.source.data['mach'], self.source.data['bot_slice'], source = self.source)
+        except KeyError:
+            print('Bottom slice is not a part of source data')
 
         layout = row(
-            column(mach_slider, alt_slider, throttle_slider),
+            column(self.mach_slider, self.alt_slider, self.throttle_slider),
         )
-        grid = gridplot([[contour_plot, layout]])
+        grid = gridplot([[s1, contour_plot, layout], [None, s3]])
+
 
         # show the results
         curdoc().add_root(grid)
 
-    def alt_vs_thrust_callback(self, attr, old, new):
-        mach_index = np.where(np.around(self.mach, 5) == np.around(new, 5))[0]
-        z_data = self.Z[mach_index].flatten()
+    # def alt_vs_thrust_callback(self, attr, old, new):
+    #     mach_index = np.where(np.around(self.mach, 5) == np.around(new, 5))[0]
+    #     self.z_data = self.Z[mach_index].flatten()
 
-        self.source.add(z_data, name='left_slice')
+    #     self.x0_list[0] = np.around(new, 5)
+    #     print(new)
+    #     self.plot_contour()
+    #     # self.layout_plots()
+    #     # self.source.add(self.z_data, name='left_slice')
+    #     # self.layout_plots()
 
-    def mach_vs_thrust_callback(self, attr, old, new):
-        alt_index = np.where(np.around(self.alt, 5) == np.around(new, 5))[0]
-        z_data = self.Z[alt_index].flatten()
 
-        self.source.add(z_data, name='bot_slice')
+    # def mach_vs_thrust_callback(self, attr, old, new):
+    #     alt_index = np.where(np.around(self.alt, 5) == np.around(new, 5))[0]
+    #     z_data = self.Z[alt_index].flatten()
+
+    #     self.source.add(z_data, name='bot_slice')
+
+    def contour_callback(self, attr, old, new):
+
+        
+        pass
 
     def make_predictions(self, x):
         thrust = []

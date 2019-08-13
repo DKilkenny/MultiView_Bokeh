@@ -99,5 +99,5 @@ info = {'num_of_inputs':3,
 }
 
 viz = UnstructuredMetaModelVisualization(info)
-viz.plot_contour()
-viz.layout_plots()
+# viz.plot_contour()
+# viz.layout_plots()
