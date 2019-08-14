@@ -201,8 +201,6 @@ class UnstructuredMetaModelVisualization(object):
         except KeyError:
             self.source.data['left_slice'] = z_data
         
-        print("Z data being sliced into for altitude: \n", self.Z)
-
         s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
         s1.xaxis.axis_label = "Thrust"
         s1.yaxis.axis_label = "Altitude"
@@ -229,12 +227,12 @@ class UnstructuredMetaModelVisualization(object):
         s2.yaxis.axis_label = "Thrust"
         s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
         
-        print("Z data being sliced into for Mach: \n", self.Z)
-
         return s2
 
     def update(self, attr, old, new):
         self.layout.children[0] = self.contour_data()
+        self.layout.children[1] = self.alt_vs_thrust_subplot()
+        self.layout2.children[0] = self.mach_vs_thrust_subplot()
 
     def alt_vs_thrust_subplot_update(self, attr, old, new):
         self.layout.children[1] = self.alt_vs_thrust_subplot()
