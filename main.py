@@ -5,7 +5,7 @@ from bokeh.io import output_file, show, curdoc
 from bokeh.layouts import row, column
 from bokeh.plotting import figure
 from bokeh.layouts import gridplot
-from bokeh.models import Axis, Slider, ColumnDataSource
+from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper
 
 # Misc Imports
 import numpy as np
@@ -64,7 +64,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -175,14 +175,20 @@ class UnstructuredMetaModelVisualization(object):
         except KeyError:
             print("KeyError")
 
+        # Color bar formatting
+        # color_mapper = ContinuousColorMapper(palette="Viridis11", low=np.amin(Z), high=np.amax(Z))
+        color_mapper =  LinearColorMapper(palette="Viridis11", low=np.amin(Z), high=np.amax(Z))
+        color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(), label_standoff=12, location=(0,0))
+
         contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
         contour_plot.x_range.range_padding = 0
         contour_plot.y_range.range_padding = 0
-        contour_plot.plot_width = 500
+        contour_plot.plot_width = 600
         contour_plot.plot_height = 500
         contour_plot.xaxis.axis_label = "Mach"
         contour_plot.yaxis.axis_label = "Altitude"
-        contour_plot.min_border_left = 100
+        contour_plot.min_border_left = 0
+        contour_plot.add_layout(color_bar, 'right')
 
         contour_plot.image(image=[self.source.data['z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
 
@@ -222,7 +228,7 @@ class UnstructuredMetaModelVisualization(object):
             self.source.data['bot_slice'] = z_data
             # print("KeyError")
 
-        s2 = figure(plot_width=500, plot_height=200, x_range=(0,max(self.mach)), title="Mach vs Thrust")
+        s2 = figure(plot_width=550, plot_height=200, x_range=(0,max(self.mach)), title="Mach vs Thrust")
         s2.xaxis.axis_label = "Mach"
         s2.yaxis.axis_label = "Thrust"
         s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
