@@ -1,17 +1,19 @@
 # Import 
 
 # Bokeh Imports
-from bokeh.io import output_file, show, curdoc
+from bokeh.io import output_file, show, curdoc, save
 from bokeh.layouts import row, column
 from bokeh.plotting import figure
 from bokeh.layouts import gridplot
-from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper
+from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper, Button
+from bokeh.events import ButtonClick
 
 # Misc Imports
 import numpy as np
 import openmdao.api as om
 import matplotlib.pyplot as plt
 import math
+from scipy.spatial import cKDTree
 
 
 # ======================================================================
@@ -64,7 +66,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -101,6 +103,7 @@ class UnstructuredMetaModelVisualization(object):
 
         self.x_index = 0
         self.y_index = 1
+        self.dist_range = 0.1
 
         self.output_variable = self.info['output_variable']
 
@@ -116,6 +119,9 @@ class UnstructuredMetaModelVisualization(object):
         self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
         self.throttle_slider.on_change('value', self.update)
 
+        # self.button = Button(label="Foo", button_type="success")
+        # self.button.on_event(ButtonClick, self.callback)
+
         self.sliders = row(
             column(self.mach_slider, self.alt_slider, self.throttle_slider),
         )
@@ -124,6 +130,9 @@ class UnstructuredMetaModelVisualization(object):
         curdoc().add_root(self.layout)
         curdoc().add_root(self.layout2)
         curdoc().title = 'MultiView'
+
+    # def callback(self, event):
+    #     save(self.layout)
     
     def make_predictions(self, data):
         thrust = []
@@ -153,10 +162,10 @@ class UnstructuredMetaModelVisualization(object):
         n = self.n
         xe = np.zeros((n, n, self.nx))
         ye = np.zeros((n, n, self.ny))
-        x0_list = [mach_value, alt_value, throttle_value]
+        self.x0_list = [mach_value, alt_value, throttle_value]
 
         for ix in range(self.nx):
-            xe[:, :, ix] = x0_list[ix]
+            xe[:, :, ix] = self.x0_list[ix]
         xlins = np.linspace(min(self.mach), max(self.mach), n)
         ylins = np.linspace(min(self.alt), max(self.alt), n)
 
@@ -192,6 +201,11 @@ class UnstructuredMetaModelVisualization(object):
 
         contour_plot.image(image=[self.source.data['z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
 
+        data = self.training_points()
+        if len(data):
+            data = np.array(data)
+            contour_plot.circle(x=data[:, 0], y=data[:,1], size=5, color='white', alpha=0.25)
+
         return contour_plot
 
     def alt_vs_thrust_subplot(self):
@@ -212,6 +226,19 @@ class UnstructuredMetaModelVisualization(object):
         s1.yaxis.axis_label = "Altitude"
         s1.line(self.source.data['left_slice'], self.slider_source.data['alt'])
 
+        data = self.training_points()
+        vert_color = np.zeros((len(data), 1))
+        for i,info in enumerate(data):
+            alpha = np.abs(info[0] - mach_value) / self.limit_range[self.x_index]
+            if alpha < self.dist_range:
+                vert_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
+
+        color = np.column_stack((data[:,-4:-1] - 1, vert_color))
+        alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
+        s1.scatter(x=data[:, 3], y=data[:, 1], line_color=None, fill_color='#000000', fill_alpha=alphas)
+
+        ######## Need to convert RGBA values to hex values ########
+        
         return s1
 
     def mach_vs_thrust_subplot(self):
@@ -232,7 +259,19 @@ class UnstructuredMetaModelVisualization(object):
         s2.xaxis.axis_label = "Mach"
         s2.yaxis.axis_label = "Thrust"
         s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
-        
+
+
+        data = self.training_points()
+        horiz_color = np.zeros((len(data), 1))
+        for i,info in enumerate(data):
+            alpha = np.abs(info[1] - alt_value) / self.limit_range[self.y_index]
+            if alpha < self.dist_range:
+                horiz_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
+
+        color = np.column_stack((data[:,-4:-1] - 1, horiz_color))
+        alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
+        s2.scatter(x=data[:, 0], y=data[:, 3], line_color=None, fill_color='#000000', fill_alpha=alphas)
+
         return s2
 
     def update(self, attr, old, new):
@@ -245,5 +284,39 @@ class UnstructuredMetaModelVisualization(object):
 
     def mach_vs_thrust_subplot_update(self, attr, old, new):
         self.layout2.children[0] = self.mach_vs_thrust_subplot()
+        
 
 
+    def training_points(self):
+        xt = self.info['scatter_points'][0]
+        yt = self.info['scatter_points'][1]
+
+        data = np.zeros((0, 8))
+        limits = np.array(self.info['bounds'])
+        self.limit_range = limits[:, 1] - limits[:, 0]
+
+        infos = np.vstack((xt[:, self.x_index], xt[:, self.y_index])).transpose()
+        points = xt.copy()
+        points[:, self.x_index] = self.x0_list[self.x_index]
+        points[:, self.y_index] = self.x0_list[self.y_index]
+        points = np.divide(points, self.limit_range)
+        tree = cKDTree(points)
+        dist_limit = np.linalg.norm(self.dist_range * self.limit_range)
+        scaled_x0 = np.divide(self.x0_list, self.limit_range)
+        dists, idx = tree.query(scaled_x0, k=len(xt), distance_upper_bound=dist_limit)
+        idx = idx[idx != len(xt)]
+        data = np.zeros((len(idx), 8))
+
+        for dist_index, i in enumerate(idx):
+            if i != len(xt):
+                info = np.ones((8))
+                info[0:2] = infos[i, :]
+                info[2] = dists[dist_index] / dist_limit
+                info[3] = yt[i, self.output_variable]
+                info[7] = (1. - info[2] / self.dist_range) ** 0.5
+                data[dist_index] = info
+
+        return data
+
+
+# TODO: https://bokeh.pydata.org/en/latest/docs/user_guide/styling.html check out bands

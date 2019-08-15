@@ -3,3 +3,5 @@ layout.html
 lines.html
 __pycache__/
 slider.html
+.DS_Store
+.vscode/
