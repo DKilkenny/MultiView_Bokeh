@@ -7,6 +7,8 @@ from bokeh.plotting import figure
 from bokeh.layouts import gridplot
 from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper, Button
 from bokeh.events import ButtonClick
+from bokeh.models.renderers import GlyphRenderer
+from bokeh.models.widgets import TextInput
 
 # Misc Imports
 import numpy as np
@@ -14,7 +16,7 @@ import openmdao.api as om
 import matplotlib.pyplot as plt
 import math
 from scipy.spatial import cKDTree
-
+import itertools
 
 # ======================================================================
 #                       Engine Setup
@@ -66,7 +68,7 @@ xlimits = np.array([
 
 # Initial surrogate call
 #### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Alt', 0., training_data=xt[:, 1])
@@ -103,12 +105,9 @@ class UnstructuredMetaModelVisualization(object):
 
         self.x_index = 0
         self.y_index = 1
-        self.dist_range = 0.1
+        
 
         self.output_variable = self.info['output_variable']
-
-        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
-        self.slider_source = ColumnDataSource(data=dict(alt=self.alt, mach=self.mach, throttle=self.throttle))
 
         self.mach_slider = Slider(start=min(self.mach), end=max(self.mach), value=0, step=self.mach_step, title="Mach")
         self.mach_slider.on_change('value', self.alt_vs_thrust_subplot_update)
@@ -119,11 +118,17 @@ class UnstructuredMetaModelVisualization(object):
         self.throttle_slider = Slider(start=min(self.throttle), end=max(self.throttle), value=0, step=self.throttle_step, title="Throttle") 
         self.throttle_slider.on_change('value', self.update)
 
+        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
+        self.slider_source = ColumnDataSource(data=dict(alt=self.alt, mach=self.mach, throttle=self.throttle))
+
+        self.scatter_distance = TextInput(value="0.1", title="Scatter Distance")
+        self.dist_range = float(self.scatter_distance.value)
+        self.scatter_distance.on_change('value', self.scatter_input)
         # self.button = Button(label="Foo", button_type="success")
         # self.button.on_event(ButtonClick, self.callback)
 
         self.sliders = row(
-            column(self.mach_slider, self.alt_slider, self.throttle_slider),
+            column(self.mach_slider, self.alt_slider, self.throttle_slider, self.scatter_distance),
         )
         self.layout = row(self.contour_data(), self.alt_vs_thrust_subplot(), self.sliders)
         self.layout2 = row(self.mach_vs_thrust_subplot())
@@ -178,7 +183,6 @@ class UnstructuredMetaModelVisualization(object):
         Z = Z.reshape(n, n)
         self.Z = Z
 
-        # print(self.source.data['z'])
         try:
             self.source.add(Z, 'z')
         except KeyError:
@@ -189,28 +193,31 @@ class UnstructuredMetaModelVisualization(object):
         color_mapper =  LinearColorMapper(palette="Viridis11", low=np.amin(Z), high=np.amax(Z))
         color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(), label_standoff=12, location=(0,0))
 
-        contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
-        contour_plot.x_range.range_padding = 0
-        contour_plot.y_range.range_padding = 0
-        contour_plot.plot_width = 600
-        contour_plot.plot_height = 500
-        contour_plot.xaxis.axis_label = "Mach"
-        contour_plot.yaxis.axis_label = "Altitude"
-        contour_plot.min_border_left = 0
-        contour_plot.add_layout(color_bar, 'right')
+        self.contour_plot = figure(tooltips=[("Mach", "$x"), ("Altitude", "$y"), ("Thrust", "@image")])
+        self.contour_plot.x_range.range_padding = 0
+        self.contour_plot.y_range.range_padding = 0
+        self.contour_plot.plot_width = 600
+        self.contour_plot.plot_height = 500
+        self.contour_plot.xaxis.axis_label = "Mach"
+        self.contour_plot.yaxis.axis_label = "Altitude"
+        self.contour_plot.min_border_left = 0
+        self.contour_plot.add_layout(color_bar, 'right')
 
-        contour_plot.image(image=[self.source.data['z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
+        self.contour_plot.image(image=[self.source.data['z']], x=0, y=0, dw=max(self.mach), dh=max(self.alt), palette="Viridis11")
+        # contour_plot.line(x=mach_value, y=self.alt, color='black', source=)
+        # self.contour_plot.line(x=0.4, y=[0.0, 43.0], color='black')
 
         data = self.training_points()
         if len(data):
             data = np.array(data)
-            contour_plot.circle(x=data[:, 0], y=data[:,1], size=5, color='white', alpha=0.25)
+            self.contour_plot.circle(x=data[:, 0], y=data[:,1], size=5, color='white', alpha=0.25)
 
-        return contour_plot
+        return self.contour_plot        
+
+        
 
     def alt_vs_thrust_subplot(self):
 
-        # print(self.source.data['z'])
         mach_value = self.mach_slider.value
 
         mach_index = np.where(np.around(self.mach, 5) == np.around(mach_value, 5))[0]
@@ -233,18 +240,22 @@ class UnstructuredMetaModelVisualization(object):
             if alpha < self.dist_range:
                 vert_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
 
+        print("Dist range: ", self.dist_range)
         color = np.column_stack((data[:,-4:-1] - 1, vert_color))
         alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
         s1.scatter(x=data[:, 3], y=data[:, 1], line_color=None, fill_color='#000000', fill_alpha=alphas)
 
-        ######## Need to convert RGBA values to hex values ########
+        self.remove_glyphs(self.contour_plot, ['mach_line'])
+        self.contour_plot.line(x=mach_value, y=self.alt, color='black', name='mach_line')
         
         return s1
+
 
     def mach_vs_thrust_subplot(self):
 
         # print(self.source.data['z'])
         alt_value = self.alt_slider.value
+        
 
         alt_index = np.where(np.around(self.alt, 5) == np.around(alt_value, 5))[0]
         z_data = self.Z[alt_index].flatten()
@@ -259,7 +270,7 @@ class UnstructuredMetaModelVisualization(object):
         s2.xaxis.axis_label = "Mach"
         s2.yaxis.axis_label = "Thrust"
         s2.line(self.slider_source.data['mach'], self.source.data['bot_slice'])
-
+        
 
         data = self.training_points()
         horiz_color = np.zeros((len(data), 1))
@@ -267,10 +278,13 @@ class UnstructuredMetaModelVisualization(object):
             alpha = np.abs(info[1] - alt_value) / self.limit_range[self.y_index]
             if alpha < self.dist_range:
                 horiz_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
-
+        
         color = np.column_stack((data[:,-4:-1] - 1, horiz_color))
         alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
         s2.scatter(x=data[:, 0], y=data[:, 3], line_color=None, fill_color='#000000', fill_alpha=alphas)
+        
+        self.remove_glyphs_x(self.contour_plot, ['alt_line'])
+        self.contour_plot.line(x=self.mach, y=alt_value, color='black', name='alt_line')
 
         return s2
 
@@ -284,8 +298,23 @@ class UnstructuredMetaModelVisualization(object):
 
     def mach_vs_thrust_subplot_update(self, attr, old, new):
         self.layout2.children[0] = self.mach_vs_thrust_subplot()
-        
 
+    def scatter_input(self, attr, old, new):
+        self.dist_range = float(new)
+
+    def remove_glyphs(self, figure, glyph_name_list):
+        renderers = figure.select(dict(type=GlyphRenderer))
+        for r in renderers:
+            if r.name in glyph_name_list:
+                col = r.glyph.y
+                r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])
+        
+    def remove_glyphs_x(self, figure, glyph_name_list):
+        renderers = figure.select(dict(type=GlyphRenderer))
+        for r in renderers:
+            if r.name in glyph_name_list:
+                col = r.glyph.x
+                r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])        
 
     def training_points(self):
         xt = self.info['scatter_points'][0]
