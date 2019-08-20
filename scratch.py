@@ -84,43 +84,24 @@ prob.setup()
 info = {'num_of_inputs':3,
         'num_of_outputs':2,
         'resolution':50,
-        'dimension_names':[
-            'Mach number',
-            'Altitude, kft',
-            'Throttle'],
+        'input_names':{
+            'Mach': [0, 0.9],
+            'Altitude': [0, 43],
+            'Throttle': [0, 1]},
         'bounds':xlimits.tolist(),
+        'interp': interp.options._dict,
         'X_dimension':0,
         'Y_dimension':1,
         'scatter_points':[xt, yt],
         'output_variable': 0,
         'dist_range': .1,
         'output_names':[
-            'Thrust, 1e5 N',
-            'TSFC, 1/s']
+            'Thrust',
+            'TSFC']
 }
-
+# 'output_names':[
+#             'Thrust, 1e5 N',
+#             'TSFC, 1/s']
 viz = UnstructuredMetaModelVisualization(info)
 
 
-
-    # def contour_update(self, attr, old, new):
-    #     self.layout.children[1] = self.contour_data()
-
-    # def subplot(self):
-    #     # print(self.source.data['z'])
-    #     mach_value = self.mach_slider.value
-
-    #     mach_index = np.where(np.around(self.mach, 5) == np.around(mach_value, 5))[0]
-    #     z_data = self.Z[mach_index].flatten()
-
-    #     self.source.data = dict(left_slice=z_data)
-
-    #     s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(self.alt)), title="Altitude vs Thrust")
-    #     s1.xaxis.axis_label = "Thrust"
-    #     s1.yaxis.axis_label = "Altitude"
-    #     s1.line(self.source.data['left_slice'], self.slider_source.data['alt'])
-
-    #     return s1
-
-    # def subplot_update(self, attr, old, new):
-    #     self.layout.children[0] = self.subplot()
