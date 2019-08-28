@@ -25,17 +25,21 @@ from utility_functions import stack_outputs
 
 class UnstructuredMetaModelVisualization(object):
     
-    def __init__(self, info):
+    def __init__(self, info, prob, xt, yt):
         self.info = info
 
-        self.prob = self.info['prob']
+        # self.prob = self.info['prob']
+        self.prob = prob
+        self.xt = xt
+        self.yt = yt
+        self.n = 50 # Make this a keyword arg
         
-        # self.input_data = [i for i in self.prob.model.interp.options[str('train:' + i)]]
-
         self.input_list = [i[0] for i in self.prob.model.interp._surrogate_input_names]
         self.output_list = [i[0] for i in self.prob.model.interp._surrogate_output_names]
 
-        self.n = self.info['resolution']
+        self.input_data = {}
+        for title in self.input_list:
+            self.input_data[title] = {i for i in self.prob.model.interp.options[str('train:' + title)]}
 
         self.x_input = Select(title="X Input:", value=[x for x in self.input_list][0], 
         options=[x for x in self.input_list])
@@ -53,7 +57,7 @@ class UnstructuredMetaModelVisualization(object):
         self.input_data_dict = OrderedDict()
 
         # Setup for sliders
-        for title, values in self.info['input_names'].items():
+        for title, values in self.input_data.items():
             slider_spacing = np.linspace(min(values), max(values), self.n)
             self.input_data_dict[title] = slider_spacing
             slider_step = slider_spacing[1] - slider_spacing[0]
@@ -72,31 +76,28 @@ class UnstructuredMetaModelVisualization(object):
                 obj = getattr(self, name)
                 obj.on_change('value', self.update)
 
-        self.x = np.linspace(0, 100, self.n)
-        self.y = np.linspace(0, 100, self.n)
-
         self.nx = len(self.input_list)
         self.ny = len(self.output_list)
 
         self.x_index = 0
         self.y_index = 1
-        
-        self.output_variable = self.info['output_names'].index(self.output_value.value)
+        self.output_variable = self.output_list.index(self.output_value.value) # Take a look at this 
 
+        # Most data sources are filled with initial values
         self.slider_source = ColumnDataSource(data=self.input_data_dict)
         self.bot_plot_source = ColumnDataSource(data=dict(bot_slice_x=np.repeat(0,self.n), bot_slice_y=np.repeat(0,self.n)))
         self.left_plot_source = ColumnDataSource(data=dict(left_slice_x=np.repeat(0,self.n), left_slice_y=np.repeat(0,self.n), 
-        x1=np.repeat(0,self.n), x2=np.repeat(0,self.n)))
-        self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
+        x1=np.repeat(0,self.n), x2=np.repeat(0,self.n))) 
+        self.source = ColumnDataSource(data=dict(x=np.linspace(0,100, self.n), y=np.linspace(0,100, self.n))) # Linspaces are just placeholders
 
         self.scatter_distance = TextInput(value="0.1", title="Scatter Distance")
-        self.dist_range = float(self.scatter_distance.value)
         self.scatter_distance.on_change('value', self.scatter_input)
 
-        sliders = []
-        for i in self.slider_dict.values():
-            sliders.append(i)
+        self.dist_range = float(self.scatter_distance.value)
+        
 
+        sliders = [i for i in self.slider_dict.values()]
+        
         self.sliders = row(
             column(*sliders, self.x_input,
             self.y_input, self.output_value, self.scatter_distance)
@@ -112,16 +113,13 @@ class UnstructuredMetaModelVisualization(object):
 
         outputs = {i : [] for i in self.output_list}
         print("Making Predictions")
-        # options._dict to get data
-        # _surrogate_input_names to get inputs
-        # _surrogate_output_names to get outputs
 
         # Parse dict into [n**2, number of inputs] list
         inputs = np.empty([self.n**2, self.nx])
         for idx, values in enumerate(data.values()):
             inputs[:, idx] = values.flatten()
 
-        # pair data points with their respective prob name. Loop to make predictions
+        # Pair data points with their respective prob name. Loop to make predictions
         for idx, tup in enumerate(inputs):
             for name, val in zip(data.keys(), tup):
                 self.prob['interp.'+ name] = val
@@ -344,31 +342,19 @@ class UnstructuredMetaModelVisualization(object):
             self.update_all_plots()
 
     def output_value_update(self, attr, old, new):
-        self.output_variable = self.info['output_names'].index(new)
+        self.output_variable = self.output_list.index(new)
         self.update_all_plots()
-
-    # def remove_glyphs(self, figure, glyph_name_list):
-    #     renderers = figure.select(dict(type=GlyphRenderer))
-    #     for r in renderers:
-    #         if r.name in glyph_name_list:
-    #             col = r.glyph.y
-    #             r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])
-        
-    # def remove_glyphs_x(self, figure, glyph_name_list):
-    #     renderers = figure.select(dict(type=GlyphRenderer))
-    #     for r in renderers:
-    #         if r.name in glyph_name_list:
-    #             col = r.glyph.x
-    #             r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])        
 
     def training_points(self):
 
-        xt = self.info['scatter_points'][0] # Input Data
-        yt = self.info['scatter_points'][1] # Output Data
-        output_variable = self.info['output_names'].index(self.output_value.value)
+        bounds = [[min(i), max(i)] for i in self.input_data.values()]
+
+        xt = self.xt # Input Data
+        yt = self.yt # Output Data
+        output_variable = self.output_list.index(self.output_value.value)
 
         data = np.zeros((0, 8))
-        limits = np.array(self.info['bounds'])
+        limits = np.array(bounds)
         self.limit_range = limits[:, 1] - limits[:, 0]
 
         infos = np.vstack((xt[:, self.x_index], xt[:, self.y_index])).transpose()

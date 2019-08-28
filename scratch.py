@@ -99,6 +99,6 @@ info = {
         
 }
 
-viz = UnstructuredMetaModelVisualization(info)
+viz = UnstructuredMetaModelVisualization(info, prob, xt, yt)
 
 
