@@ -64,11 +64,10 @@ xlimits = np.array([
 ])
 
 # Initial surrogate call
-#### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.KrigingSurrogate())
+interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
 # Inputs
 interp.add_input('Mach', 0., training_data=xt[:, 0])
-interp.add_input('Alt', 0., training_data=xt[:, 1])
+interp.add_input('Altitude', 0., training_data=xt[:, 1])
 interp.add_input('Throttle', 0., training_data=xt[:, 2])
 
 # Outputs
@@ -80,9 +79,10 @@ prob = om.Problem()
 prob.model.add_subsystem('interp', interp)
 prob.setup()
 
-
-info = {'num_of_inputs':3,
-        'num_of_outputs':2,
+# options._dict to get data
+# _surrogate_input_names to get inputs
+# _surrogate_output_names to get outputs
+info = {
         'resolution':50,
         'input_names':{
             'Mach': [0, 0.9],
@@ -90,18 +90,15 @@ info = {'num_of_inputs':3,
             'Throttle': [0, 1]},
         'bounds':xlimits.tolist(),
         'interp': interp.options._dict,
-        'X_dimension':0,
-        'Y_dimension':1,
         'scatter_points':[xt, yt],
-        'output_variable': 0,
-        'dist_range': .1,
+        'surrogate_name': 'interp',
         'output_names':[
             'Thrust',
-            'TSFC']
+            'TSFC'],
+        'prob': prob,
+        
 }
-# 'output_names':[
-#             'Thrust, 1e5 N',
-#             'TSFC, 1/s']
+
 viz = UnstructuredMetaModelVisualization(info)
 
 

@@ -5,10 +5,12 @@ from bokeh.io import output_file, show, curdoc, save
 from bokeh.layouts import row, column
 from bokeh.plotting import figure
 from bokeh.layouts import gridplot
-from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper, Button, Range1d
+from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper, Range1d
 from bokeh.events import ButtonClick
 from bokeh.models.renderers import GlyphRenderer
 from bokeh.models.widgets import TextInput, Select
+from openmdao.devtools.debug import profiling
+
 
 # Misc Imports
 import numpy as np
@@ -17,71 +19,8 @@ import matplotlib.pyplot as plt
 import math
 from scipy.spatial import cKDTree
 import itertools
-
-# ======================================================================
-#                       Engine Setup
-# ======================================================================
-# Load Data from John:
-tmp = np.loadtxt('UHB.outputFLOPS')
-
-# net thrust = gross thrust - ram drag (and convert to N)
-tmp[:, 3] = (tmp[:, 3] - tmp[:, 4])*4.44822162
-
-# Need to replace power code with fraction Tmax since there is not
-# enough precision:
-for i in range(len(tmp)):
-    if tmp[i, 2] == 50:
-        tmax = tmp[i, 3]
-    tmp[i, 2] = tmp[i, 3] / tmax
-
-# Converting units and identifying column titles
-engineOptions = {'mach':tmp[:, 0],
-           'altitude':tmp[:, 1]*.3048, # Alt in m
-           'throttle':tmp[:, 2],
-           'thrust':tmp[:, 3],
-           'tsfc':tmp[:, 6]/3600.0, # TSFC in 1/s
-           'rbfType':'cubic'}
-
-# Creating empty arrays
-nt = len(tmp)
-xt = np.zeros((nt, 3))
-yt = np.zeros((nt, 2))
-
-# Mach in column 0 of xt
-xt[:, 0] = tmp[:, 0]
-# Altitude in column 1 of xt
-xt[:, 1] = tmp[:, 1] / 1e3
-# Trottle in column 2 of xt
-xt[:, 2] = tmp[:, 2]
-
-# Thrust in column 0 of yt
-yt[:, 0] = tmp[:, 3] / 1e5
-# tsfc in column 1 of yt
-yt[:, 1] = tmp[:, 6] / 3600.
-
-# Set the limits of x
-xlimits = np.array([
-    [0.0, 0.9],
-    [0., 43.],
-    [0, 1]
-])
-
-# Initial surrogate call
-#### CHANGE THIS TO KRIGING SURROGATE WHEN GENERAL PLOTS ARE WORKING
-interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
-# Inputs
-interp.add_input('Mach', 0., training_data=xt[:, 0])
-interp.add_input('Alt', 0., training_data=xt[:, 1])
-interp.add_input('Throttle', 0., training_data=xt[:, 2])
-
-# Outputs
-interp.add_output('Thrust', training_data=yt[:, 0])
-interp.add_output('TSFC', training_data=yt[:, 1])
-
-# Create the problem setup
-prob = om.Problem()
-prob.model.add_subsystem('interp', interp)
-prob.setup()
+from collections import OrderedDict
+from utility_functions import stack_outputs
 
 
 class UnstructuredMetaModelVisualization(object):
@@ -89,38 +28,43 @@ class UnstructuredMetaModelVisualization(object):
     def __init__(self, info):
         self.info = info
 
+        self.prob = self.info['prob']
+        
+        # self.input_data = [i for i in self.prob.model.interp.options[str('train:' + i)]]
+
+        self.input_list = [i[0] for i in self.prob.model.interp._surrogate_input_names]
+        self.output_list = [i[0] for i in self.prob.model.interp._surrogate_output_names]
+
         self.n = self.info['resolution']
 
-        xt = self.info['scatter_points'][0] # Input Data
-        yt = self.info['scatter_points'][1] # Output Data
-
-        self.x_input = Select(title="X Input:", value=[x for x in self.info['input_names']][0], 
-        options=[x for x in self.info['input_names']])
+        self.x_input = Select(title="X Input:", value=[x for x in self.input_list][0], 
+        options=[x for x in self.input_list])
         self.x_input.on_change('value', self.x_input_update)
         
-        self.y_input = Select(title="Y Input:", value=[x for x in self.info['input_names']][1], 
-        options=[x for x in self.info['input_names']])
+        self.y_input = Select(title="Y Input:", value=[x for x in self.input_list][1], 
+        options=[x for x in self.input_list])
         self.y_input.on_change('value', self.y_input_update)
 
-        self.z_input = Select(title="Z Input:", value=[x for x in self.info['input_names']][2], 
-        options=[x for x in self.info['input_names']])
+        self.z_input = Select(title="Z Input:", value=[x for x in self.input_list][2], 
+        options=[x for x in self.input_list])
         self.z_input.on_change('value', self.z_input_update)
 
-        self.output_value = Select(title="Output:", value=[x for x in self.info['output_names']][0], 
-        options=[x for x in self.info['output_names']])
+        self.output_value = Select(title="Output:", value=[x for x in self.output_list][0], 
+        options=[x for x in self.output_list])
         self.output_value.on_change('value', self.output_value_update)
 
 
         self.slider_dict = {}
-        self.input_data_spacing = {}
+        self.input_data_dict = OrderedDict()
 
+        # Setup for sliders
         for title, values in self.info['input_names'].items():
             slider_spacing = np.linspace(min(values), max(values), self.n)
-            self.input_data_spacing[title] = slider_spacing
+            self.input_data_dict[title] = slider_spacing
             slider_step = slider_spacing[1] - slider_spacing[0]
             self.slider_dict[title] = Slider(start=min(values), end=max(values), value=min(values), step=slider_step, title=str(title))        
-        
-        # Need to figure out how to generalize the update function for the sliders
+
+        # Need to remove z_input
         for name, slider_object in self.slider_dict.items():
             if name == self.x_input.value:
                 self.x_input_slider = slider_object
@@ -136,17 +80,18 @@ class UnstructuredMetaModelVisualization(object):
         self.x = np.linspace(0, 100, self.n)
         self.y = np.linspace(0, 100, self.n)
 
-        self.nx = self.info['num_of_inputs']
-        self.ny = self.info['num_of_outputs']
+        self.nx = len(self.input_list)
+        self.ny = len(self.output_list)
 
         self.x_index = 0
         self.y_index = 1
         
-        # Need to refactor this to hold the output_value I defined earlier
         self.output_variable = self.info['output_names'].index(self.output_value.value)
-        print(self.output_variable)
 
-        self.slider_source = ColumnDataSource(data=self.input_data_spacing)
+        self.slider_source = ColumnDataSource(data=self.input_data_dict)
+        self.bot_plot_source = ColumnDataSource(data=dict(bot_slice_x=np.repeat(0,self.n), bot_slice_y=np.repeat(0,self.n)))
+        self.left_plot_source = ColumnDataSource(data=dict(left_slice_x=np.repeat(0,self.n), left_slice_y=np.repeat(0,self.n), 
+        x1=np.repeat(0,self.n), x2=np.repeat(0,self.n)))
         self.source = ColumnDataSource(data=dict(x=self.x, y=self.y))
 
         self.scatter_distance = TextInput(value="0.1", title="Scatter Distance")
@@ -167,50 +112,73 @@ class UnstructuredMetaModelVisualization(object):
         curdoc().add_root(self.layout)
         curdoc().add_root(self.layout2)
         curdoc().title = 'MultiView'
-    
+
     def make_predictions(self, data):
-        thrust = []
-        tsfc = []
+
+        outputs = {i : [] for i in self.output_list}
         print("Making Predictions")
+        # options._dict to get data
+        # _surrogate_input_names to get inputs
+        # _surrogate_output_names to get outputs
 
-        for i, j, k in data:
-            prob['interp.Mach'] = i
-            prob['interp.Alt'] = j
-            prob['interp.Throttle'] = k
-            prob.run_model()
-            thrust.append(float(prob['interp.Thrust']))
-            tsfc.append(float(prob['interp.TSFC']))
+        # Parse dict into [n**2, number of inputs] list
+        inputs = np.empty([self.n**2, self.nx])
+        for idx, values in enumerate(data.values()):
+            inputs[:, idx] = values.flatten()
 
-        # Cast as np arrays to concatenate them together at the end
-        thrust = np.asarray(thrust)
-        tsfc = np.asarray(tsfc)
+        # pair data points with their respective prob name. Loop to make predictions
+        for idx, tup in enumerate(inputs):
+            for name, val in zip(data.keys(), tup):
+                self.prob['interp.'+ name] = val
+            self.prob.run_model()
+            for i in self.output_list:
+                outputs[i].append(float(self.prob['interp.' + i]))
 
-        return np.stack([thrust, tsfc], axis=-1)
+        return stack_outputs(outputs)
 
     def contour_data(self):
 
         n = self.n
         xe = np.zeros((n, n, self.nx))
         ye = np.zeros((n, n, self.ny))
-        # Make sure these are coming in in the right order (mach, alt, throttle)
-        self.x0_list = [i.value for i in self.slider_dict.values()]
+
+        self.slider_value_and_name = OrderedDict()
+        for title, info in self.slider_dict.items():
+            self.slider_value_and_name[title] = info.value
+
+        self.input_point_list = list(self.slider_value_and_name.values())
 
         for ix in range(self.nx):
-            xe[:, :, ix] = self.x0_list[ix]
-        
-        for title, values in self.input_data_spacing.items():
+            xe[:, :, ix] = self.input_point_list[ix]
+    
+        for title, values in self.input_data_dict.items():
             if title == self.x_input.value:
-                xlins = np.linspace(min(values), max(values), n)
+                xlins = values
                 dw = max(values)
             if title == self.y_input.value:
-                ylins = np.linspace(min(values), max(values), n)
+                ylins = values
                 dh = max(values)
-        
+
         X, Y = np.meshgrid(xlins, ylins)
+        # Figure out if x_index is always the 0 column or if it would change in higher dimensional spaces
         xe[:, :, self.x_index] = X
         xe[:, :, self.y_index] = Y
 
-        ye[:, :, :] = self.make_predictions(xe.reshape((n**2, self.nx))).reshape((n, n, self.ny))
+        # This block puts the x and y inputs first and then appends any other values afterwards 
+        pred_dict = {}
+        self.input_list = [self.x_input.value, self.y_input.value]
+        for title in self.slider_value_and_name.keys():
+            if title == self.x_input.value or title == self.y_input.value:
+                pass
+            else:
+                self.input_list.append(title)
+        
+        for idx, title in enumerate(self.slider_value_and_name.keys()):
+            pred_dict.update({title: xe[:, :, idx]})
+        pred_dict_ordered = OrderedDict((k, pred_dict[k]) for k in self.input_list)
+        print(pred_dict_ordered.keys())
+
+        ye[:, :, :] = self.make_predictions(pred_dict_ordered).reshape((n, n, self.ny))
         Z = ye[:, :, self.output_variable]
         Z = Z.reshape(n, n)
         self.Z = Z
@@ -221,10 +189,10 @@ class UnstructuredMetaModelVisualization(object):
             print("KeyError")
 
         # Color bar formatting
-        # color_mapper = ContinuousColorMapper(palette="Viridis11", low=np.amin(Z), high=np.amax(Z))
         color_mapper =  LinearColorMapper(palette="Viridis11", low=np.amin(Z), high=np.amax(Z))
         color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(), label_standoff=12, location=(0,0))
 
+        # Contour Plot
         self.contour_plot = figure(tooltips=[(self.x_input.value, "$x"), (self.y_input.value, "$y"), (self.output_value.value, "@image")], tools="")
         self.contour_plot.x_range.range_padding = 0
         self.contour_plot.y_range.range_padding = 0
@@ -249,14 +217,14 @@ class UnstructuredMetaModelVisualization(object):
         
 
     def left_plot(self):
-
-        for title, values in self.input_data_spacing.items():
+        
+        for title, values in self.input_data_dict.items():
             if title == self.x_input.value:
-                x_value = self.x_input_slider.value
-                mach_index = np.where(np.around(self.input_data_spacing[title], 5) == np.around(x_value, 5))[0]
+                self.x_value = self.x_input_slider.value
+                mach_index = np.where(np.around(self.input_data_dict[title], 5) == np.around(self.x_value, 5))[0]
 
             elif title == self.y_input.value:
-                y_data = self.input_data_spacing[title]
+                self.y_data = self.input_data_dict[title]
 
         z_data = self.Z[:, mach_index].flatten()
 
@@ -265,38 +233,43 @@ class UnstructuredMetaModelVisualization(object):
         except KeyError:
             self.source.data['left_slice'] = z_data
 
-        s1 = figure(plot_width=200, plot_height=500, y_range=(0,max(y_data)), title="{} vs {}".format(self.y_input.value, self.output_value.value), tools="")
+        x = self.source.data['left_slice']
+        y = self.slider_source.data[self.y_input.value]
+
+        s1 = figure(plot_width=200, plot_height=500, x_range=(min(x), max(x)), y_range=(0,max(self.y_data)), title="{} vs {}".format(self.y_input.value, self.output_value.value), tools="")
         s1.xaxis.axis_label = self.output_value.value
         s1.yaxis.axis_label = self.y_input.value
-        s1.line(self.source.data['left_slice'], self.slider_source.data[self.y_input.value])
+        s1.line(x, y)
 
         data = self.training_points()
         vert_color = np.zeros((len(data), 1))
         for i,info in enumerate(data):
-            alpha = np.abs(info[0] - x_value) / self.limit_range[self.x_index]
+            alpha = np.abs(info[0] - self.x_value) / self.limit_range[self.x_index]
             if alpha < self.dist_range:
                 vert_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
 
-        print("Dist range: ", self.dist_range)
         color = np.column_stack((data[:,-4:-1] - 1, vert_color))
         alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
         s1.scatter(x=data[:, 3], y=data[:, 1], line_color=None, fill_color='#000000', fill_alpha=alphas)
 
-        self.remove_glyphs(self.contour_plot, ['mach_line'])
-        self.contour_plot.line(x=x_value, y=y_data, color='black', name='mach_line')
+        self.left_plot_source.data = dict(left_slice_x=np.repeat(self.x_value, self.n), left_slice_y=self.y_data, 
+        x1=np.array([x+self.dist_range for x in np.repeat(self.x_value, self.n)]), x2=np.array([x-self.dist_range for x in np.repeat(self.x_value, self.n)]))
+
+        # self.contour_plot.harea(y='left_slice_y', x1='x1', x2='x2', source=self.left_plot_source, color='gray', fill_alpha=0.25)
+        # self.contour_plot.line('left_slice_x', 'left_slice_y', source=self.left_plot_source, color='black', line_width=2)
         
         return s1
 
-
     def bot_plot(self):
 
-        for title, values in self.input_data_spacing.items():
+        for title, values in self.input_data_dict.items():
             if title == self.x_input.value:
-                x_data = self.input_data_spacing[title]
+                self.x_data = self.input_data_dict[title]
                 
             elif title == self.y_input.value:
-                y_value = self.y_input_slider.value
-                alt_index = np.where(np.around(self.input_data_spacing[title], 5) == np.around(y_value, 5))[0]
+                self.y_value = self.y_input_slider.value
+                y_range = [min(values), max(values)]
+                alt_index = np.where(np.around(self.input_data_dict[title], 5) == np.around(self.y_value, 5))[0]
         
         z_data = self.Z[alt_index].flatten()
 
@@ -304,27 +277,34 @@ class UnstructuredMetaModelVisualization(object):
             self.source.add(z_data, 'bot_slice')
         except KeyError:
             self.source.data['bot_slice'] = z_data
-            # print("KeyError")
 
-        s2 = figure(plot_width=550, plot_height=200, x_range=(0,max(x_data)), title="{} vs {}".format(self.x_input.value, self.output_value.value), tools="")
+        x = self.slider_source.data[self.x_input.value]
+        y = self.source.data['bot_slice']
+
+        s2 = figure(plot_width=550, plot_height=200, x_range=(0,max(self.x_data)), y_range=(min(y), max(y)), 
+        title="{} vs {}".format(self.x_input.value, self.output_value.value), tools="")
         s2.xaxis.axis_label = self.x_input.value
         s2.yaxis.axis_label = self.output_value.value
-        s2.line(self.slider_source.data[self.x_input.value], self.source.data['bot_slice'])
-        
+        s2.line(x, y)
 
         data = self.training_points()
         horiz_color = np.zeros((len(data), 1))
         for i,info in enumerate(data):
-            alpha = np.abs(info[1] - y_value) / self.limit_range[self.y_index]
+            alpha = np.abs(info[1] - self.y_value) / self.limit_range[self.y_index]
             if alpha < self.dist_range:
                 horiz_color[i, -1] = (1 - alpha / self.dist_range) * info[-1]
         
         color = np.column_stack((data[:,-4:-1] - 1, horiz_color))
         alphas = [0 if math.isnan(x) else x for x in color[:, 3]]
         s2.scatter(x=data[:, 0], y=data[:, 3], line_color=None, fill_color='#000000', fill_alpha=alphas)
+
+        dist = self.dist_range * (y_range[1] - y_range[0])
+        y1 = np.array([i+dist for i in np.repeat(self.y_value, self.n)])
+        y2 = np.array([i-dist for i in np.repeat(self.y_value, self.n)])
         
-        self.remove_glyphs_x(self.contour_plot, ['alt_line'])
-        self.contour_plot.line(x=x_data, y=y_value, color='black', name='alt_line')
+        self.bot_plot_source.data = dict(bot_slice_x=self.x_data, bot_slice_y=np.repeat(self.y_value, self.n), y1=y1, y2=y2)
+        # self.contour_plot.varea(x='bot_slice_x', y1='y1', y2='y2', source=self.bot_plot_source, color='gray', fill_alpha=0.25, name='varea')
+        self.contour_plot.line('bot_slice_x', 'bot_slice_y', source=self.bot_plot_source, color='black', line_width=2)
 
         return s2
 
@@ -342,12 +322,15 @@ class UnstructuredMetaModelVisualization(object):
         self.update_all_plots()
 
     def scatter_plots_update(self, attr, old, new):
+        
         self.update_subplots()
 
     def scatter_input(self, attr, old, new):
         self.dist_range = float(new)
+        self.update_all_plots()
 
     def input_dropdown_checks(self,x,y,z):
+        # Might be able to put all the false cases into the if statement "if x == y or x == z:" etc
         if x == y:
             return False
         elif x == z:
@@ -400,8 +383,8 @@ class UnstructuredMetaModelVisualization(object):
 
     def training_points(self):
 
-        xt = self.info['scatter_points'][0]
-        yt = self.info['scatter_points'][1]
+        xt = self.info['scatter_points'][0] # Input Data
+        yt = self.info['scatter_points'][1] # Output Data
         output_variable = self.info['output_names'].index(self.output_value.value)
 
         data = np.zeros((0, 8))
@@ -410,12 +393,12 @@ class UnstructuredMetaModelVisualization(object):
 
         infos = np.vstack((xt[:, self.x_index], xt[:, self.y_index])).transpose()
         points = xt.copy()
-        points[:, self.x_index] = self.x0_list[self.x_index]
-        points[:, self.y_index] = self.x0_list[self.y_index]
+        points[:, self.x_index] = self.input_point_list[self.x_index]
+        points[:, self.y_index] = self.input_point_list[self.y_index]
         points = np.divide(points, self.limit_range)
         tree = cKDTree(points)
         dist_limit = np.linalg.norm(self.dist_range * self.limit_range)
-        scaled_x0 = np.divide(self.x0_list, self.limit_range)
+        scaled_x0 = np.divide(self.input_point_list, self.limit_range)
         dists, idx = tree.query(scaled_x0, k=len(xt), distance_upper_bound=dist_limit)
         idx = idx[idx != len(xt)]
         data = np.zeros((len(idx), 8))
