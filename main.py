@@ -45,14 +45,9 @@ class UnstructuredMetaModelVisualization(object):
         options=[x for x in self.input_list])
         self.y_input.on_change('value', self.y_input_update)
 
-        self.z_input = Select(title="Z Input:", value=[x for x in self.input_list][2], 
-        options=[x for x in self.input_list])
-        self.z_input.on_change('value', self.z_input_update)
-
         self.output_value = Select(title="Output:", value=[x for x in self.output_list][0], 
         options=[x for x in self.output_list])
         self.output_value.on_change('value', self.output_value_update)
-
 
         self.slider_dict = {}
         self.input_data_dict = OrderedDict()
@@ -72,10 +67,10 @@ class UnstructuredMetaModelVisualization(object):
             elif name == self.y_input.value:
                 self.y_input_slider = slider_object
                 self.y_input_slider.on_change('value', self.scatter_plots_update)
-            elif name == self.z_input.value:
-                self.z_input_slider = slider_object
-                self.z_input_slider.on_change('value', self.update)
-
+            else:
+                setattr(self, name, slider_object)
+                obj = getattr(self, name)
+                obj.on_change('value', self.update)
 
         self.x = np.linspace(0, 100, self.n)
         self.y = np.linspace(0, 100, self.n)
@@ -104,7 +99,7 @@ class UnstructuredMetaModelVisualization(object):
 
         self.sliders = row(
             column(*sliders, self.x_input,
-            self.y_input, self.z_input, self.output_value, self.scatter_distance)
+            self.y_input, self.output_value, self.scatter_distance)
         )
                
         self.layout = row(self.contour_data(), self.left_plot(), self.sliders)
@@ -176,7 +171,6 @@ class UnstructuredMetaModelVisualization(object):
         for idx, title in enumerate(self.slider_value_and_name.keys()):
             pred_dict.update({title: xe[:, :, idx]})
         pred_dict_ordered = OrderedDict((k, pred_dict[k]) for k in self.input_list)
-        print(pred_dict_ordered.keys())
 
         ye[:, :, :] = self.make_predictions(pred_dict_ordered).reshape((n, n, self.ny))
         Z = ye[:, :, self.output_variable]
@@ -322,64 +316,50 @@ class UnstructuredMetaModelVisualization(object):
         self.update_all_plots()
 
     def scatter_plots_update(self, attr, old, new):
-        
         self.update_subplots()
 
     def scatter_input(self, attr, old, new):
         self.dist_range = float(new)
         self.update_all_plots()
 
-    def input_dropdown_checks(self,x,y,z):
+    def input_dropdown_checks(self,x,y):
         # Might be able to put all the false cases into the if statement "if x == y or x == z:" etc
         if x == y:
-            return False
-        elif x == z:
-            return False
-        elif y == z:
             return False
         else:
             return True
     
     def x_input_update(self, attr, old, new):
-        if self.input_dropdown_checks(new, self.y_input.value, self.z_input.value) == False:
+        if self.input_dropdown_checks(new, self.y_input.value) == False:
             # self.x_input.value = old
             raise ValueError("Inputs should not equal each other")
         else:
             self.update_all_plots()
 
     def y_input_update(self, attr, old, new):
-        if self.input_dropdown_checks(self.x_input.value, new, self.z_input.value) == False:
+        if self.input_dropdown_checks(self.x_input.value, new) == False:
             # self.y_input.value = old
             raise ValueError("Inputs should not equal each other")
         else: 
-            self.update_all_plots()
-
-    def z_input_update(self, attr, old, new):
-        if self.input_dropdown_checks(self.x_input.value, self.y_input.value, new) == False:
-            # self.z_input.value = old
-            raise ValueError("Inputs should not equal each other")
-        else:
             self.update_all_plots()
 
     def output_value_update(self, attr, old, new):
         self.output_variable = self.info['output_names'].index(new)
         self.update_all_plots()
 
-
-
-    def remove_glyphs(self, figure, glyph_name_list):
-        renderers = figure.select(dict(type=GlyphRenderer))
-        for r in renderers:
-            if r.name in glyph_name_list:
-                col = r.glyph.y
-                r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])
+    # def remove_glyphs(self, figure, glyph_name_list):
+    #     renderers = figure.select(dict(type=GlyphRenderer))
+    #     for r in renderers:
+    #         if r.name in glyph_name_list:
+    #             col = r.glyph.y
+    #             r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])
         
-    def remove_glyphs_x(self, figure, glyph_name_list):
-        renderers = figure.select(dict(type=GlyphRenderer))
-        for r in renderers:
-            if r.name in glyph_name_list:
-                col = r.glyph.x
-                r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])        
+    # def remove_glyphs_x(self, figure, glyph_name_list):
+    #     renderers = figure.select(dict(type=GlyphRenderer))
+    #     for r in renderers:
+    #         if r.name in glyph_name_list:
+    #             col = r.glyph.x
+    #             r.data_source.data[col] = [np.nan] * len(r.data_source.data[col])        
 
     def training_points(self):
 
@@ -413,6 +393,3 @@ class UnstructuredMetaModelVisualization(object):
                 data[dist_index] = info
 
         return data
-
-
-# TODO: https://bokeh.pydata.org/en/latest/docs/user_guide/styling.html check out bands
