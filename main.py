@@ -1,12 +1,11 @@
 # Import 
 
 # Bokeh Imports
-from bokeh.io import output_file, show, curdoc, save
+from bokeh.io import output_file, show, curdoc
 from bokeh.layouts import row, column
 from bokeh.plotting import figure
 from bokeh.layouts import gridplot
 from bokeh.models import Axis, Slider, ColumnDataSource, ContinuousColorMapper, ColorBar, FixedTicker, BasicTicker, LinearColorMapper, Range1d
-from bokeh.events import ButtonClick
 from bokeh.models.renderers import GlyphRenderer
 from bokeh.models.widgets import TextInput, Select
 from openmdao.devtools.debug import profiling
@@ -20,26 +19,23 @@ import math
 from scipy.spatial import cKDTree
 import itertools
 from collections import OrderedDict
-from utility_functions import stack_outputs
 
 
 class UnstructuredMetaModelVisualization(object):
     
-    def __init__(self, info, prob, xt, yt):
-        self.info = info
+    def __init__(self, prob):
 
-        # self.prob = self.info['prob']
         self.prob = prob
-        self.xt = xt
-        self.yt = yt
+        self.subsystem_name = prob.model._static_subsystems_allprocs[0].name
+
         self.n = 50 # Make this a keyword arg
         
-        self.input_list = [i[0] for i in self.prob.model.interp._surrogate_input_names]
-        self.output_list = [i[0] for i in self.prob.model.interp._surrogate_output_names]
+        self.input_list = [i[0] for i in self.prob.model.trig._surrogate_input_names]
+        self.output_list = [i[0] for i in self.prob.model.trig._surrogate_output_names]
 
         self.input_data = {}
         for title in self.input_list:
-            self.input_data[title] = {i for i in self.prob.model.interp.options[str('train:' + title)]}
+            self.input_data[title] = {i for i in self.prob.model.trig.options[str('train:' + title)]}
 
         self.x_input = Select(title="X Input:", value=[x for x in self.input_list][0], 
         options=[x for x in self.input_list])
@@ -122,12 +118,12 @@ class UnstructuredMetaModelVisualization(object):
         # Pair data points with their respective prob name. Loop to make predictions
         for idx, tup in enumerate(inputs):
             for name, val in zip(data.keys(), tup):
-                self.prob['interp.'+ name] = val
+                self.prob[self.subsystem_name + '.' + name] = val
             self.prob.run_model()
             for i in self.output_list:
-                outputs[i].append(float(self.prob['interp.' + i]))
+                outputs[i].append(float(self.prob[self.subsystem_name + '.' + i]))
 
-        return stack_outputs(outputs)
+        return self.stack_outputs(outputs)
 
     def contour_data(self):
 
@@ -248,7 +244,7 @@ class UnstructuredMetaModelVisualization(object):
         x1=np.array([x+self.dist_range for x in np.repeat(self.x_value, self.n)]), x2=np.array([x-self.dist_range for x in np.repeat(self.x_value, self.n)]))
 
         # self.contour_plot.harea(y='left_slice_y', x1='x1', x2='x2', source=self.left_plot_source, color='gray', fill_alpha=0.25)
-        # self.contour_plot.line('left_slice_x', 'left_slice_y', source=self.left_plot_source, color='black', line_width=2)
+        self.contour_plot.line('left_slice_x', 'left_slice_y', source=self.left_plot_source, color='black', line_width=2)
         
         return s1
 
@@ -329,14 +325,12 @@ class UnstructuredMetaModelVisualization(object):
     
     def x_input_update(self, attr, old, new):
         if self.input_dropdown_checks(new, self.y_input.value) == False:
-            # self.x_input.value = old
             raise ValueError("Inputs should not equal each other")
         else:
             self.update_all_plots()
 
     def y_input_update(self, attr, old, new):
         if self.input_dropdown_checks(self.x_input.value, new) == False:
-            # self.y_input.value = old
             raise ValueError("Inputs should not equal each other")
         else: 
             self.update_all_plots()
@@ -348,9 +342,10 @@ class UnstructuredMetaModelVisualization(object):
     def training_points(self):
 
         bounds = [[min(i), max(i)] for i in self.input_data.values()]
+        
+        xt = self.prob.model.trig._training_input # Input Data
+        yt = self.stack_outputs(self.prob.model.trig._training_output) # Output Data
 
-        xt = self.xt # Input Data
-        yt = self.yt # Output Data
         output_variable = self.output_list.index(self.output_value.value)
 
         data = np.zeros((0, 8))
@@ -379,3 +374,10 @@ class UnstructuredMetaModelVisualization(object):
                 data[dist_index] = info
 
         return data
+
+    def stack_outputs(self, outputs_dict):
+        output_lists_to_stack = []
+        for values in outputs_dict.values():
+            output_lists_to_stack.append(np.asarray(values))
+
+        return np.stack(output_lists_to_stack, axis=-1)

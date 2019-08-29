@@ -96,9 +96,8 @@ info = {
             'Thrust',
             'TSFC'],
         'prob': prob,
-        
 }
 
-viz = UnstructuredMetaModelVisualization(info, prob, xt, yt)
+viz = UnstructuredMetaModelVisualization(prob, xt, yt)
 
 
