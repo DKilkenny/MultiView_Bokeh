@@ -181,7 +181,7 @@ class UnstructuredMetaModelVisualization(object):
         color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(), label_standoff=12, location=(0,0))
 
         # Contour Plot
-        self.contour_plot = figure(tooltips=[(self.x_input.value, "$x"), (self.y_input.value, "$y"), (self.output_value.value, "@image")], tools="")
+        self.contour_plot = figure(tooltips=[(self.x_input.value, "$x"), (self.y_input.value, "$y"), (self.output_value.value, "@image")], tools="pan")
         self.contour_plot.x_range.range_padding = 0
         self.contour_plot.y_range.range_padding = 0
         self.contour_plot.plot_width = 600
@@ -190,10 +190,10 @@ class UnstructuredMetaModelVisualization(object):
         self.contour_plot.yaxis.axis_label = self.y_input.value
         self.contour_plot.min_border_left = 0
         self.contour_plot.add_layout(color_bar, 'right')
-        self.contour_plot.x_range = Range1d(0, max(xlins))
-        self.contour_plot.y_range = Range1d(0, max(ylins))
+        self.contour_plot.x_range = Range1d(min(xlins), max(xlins))
+        self.contour_plot.y_range = Range1d(min(ylins), max(ylins))
 
-        self.contour_plot.image(image=[self.source.data['z']], x=0, y=0, dh=dh, dw=dw, palette="Viridis11")
+        self.contour_plot.image(image=[self.source.data['z']], x=min(xlins), y=min(ylins), dh=dh, dw=dw, palette="Viridis11")
 
         data = self.training_points()
         if len(data):
@@ -224,11 +224,12 @@ class UnstructuredMetaModelVisualization(object):
         x = self.source.data['left_slice']
         y = self.slider_source.data[self.y_input.value]
 
-        s1 = figure(plot_width=200, plot_height=500, x_range=(min(x), max(x)), y_range=(0,max(self.y_data)), title="{} vs {}".format(self.y_input.value, self.output_value.value), tools="")
+        s1 = figure(plot_width=200, plot_height=500, x_range=(min(x), max(x)), y_range=(min(self.y_data),max(self.y_data)), title="{} vs {}".format(self.y_input.value, self.output_value.value), tools="")
         s1.xaxis.axis_label = self.output_value.value
         s1.yaxis.axis_label = self.y_input.value
         s1.line(x, y)
 
+        # Code to determine distance and alpha opacity of training points
         data = self.training_points()
         vert_color = np.zeros((len(data), 1))
         for i,info in enumerate(data):
@@ -269,7 +270,7 @@ class UnstructuredMetaModelVisualization(object):
         x = self.slider_source.data[self.x_input.value]
         y = self.source.data['bot_slice']
 
-        s2 = figure(plot_width=550, plot_height=200, x_range=(0,max(self.x_data)), y_range=(min(y), max(y)), 
+        s2 = figure(plot_width=550, plot_height=200, x_range=(min(self.x_data),max(self.x_data)), y_range=(min(y), max(y)), 
         title="{} vs {}".format(self.x_input.value, self.output_value.value), tools="")
         s2.xaxis.axis_label = self.x_input.value
         s2.yaxis.axis_label = self.output_value.value
@@ -344,7 +345,7 @@ class UnstructuredMetaModelVisualization(object):
         bounds = [[min(i), max(i)] for i in self.input_data.values()]
         
         xt = self.prob.model.trig._training_input # Input Data
-        yt = self.stack_outputs(self.prob.model.trig._training_output) # Output Data
+        yt = np.squeeze(self.stack_outputs(self.prob.model.trig._training_output), axis=1) # Output Data
 
         output_variable = self.output_list.index(self.output_value.value)
 

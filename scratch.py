@@ -98,6 +98,6 @@ info = {
         'prob': prob,
 }
 
-viz = UnstructuredMetaModelVisualization(prob, xt, yt)
+viz = UnstructuredMetaModelVisualization(prob)
 
 
