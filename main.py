@@ -26,17 +26,29 @@ class UnstructuredMetaModelVisualization(object):
     def __init__(self, prob, resolution=50):
 
         self.prob = prob
-        self.subsystem_name = prob.model._static_subsystems_allprocs[0].name
+        try:
+            self.subsystem_name = prob.model._static_subsystems_allprocs[0].name
+        except:
+            msg = "Subsystem does not exist"
+            raise AttributeError(msg)
+
         self.n = resolution
         
         # Create list of inputs
         self.input_list = [i[0] for i in self.prob.model.interp._surrogate_input_names]
+        if len(self.input_list) < 2:
+            raise ValueError('Must have more than one input value')
+        
         self.output_list = [i[0] for i in self.prob.model.interp._surrogate_output_names]
 
         # Pair input list names with their respective data
         self.input_data = {}
         for title in self.input_list:
-            self.input_data[title] = {i for i in self.prob.model.interp.options[str('train:' + title)]}
+            try:
+                self.input_data[title] = {i for i in self.prob.model.interp.options[str('train:' + title)]}
+            except:
+                msg = "No training data present for one or more parameters"
+                raise TypeError(msg)
 
         # Setup dropdown menus for x/y inputs and the output value
         self.x_input = Select(title="X Input:", value=[x for x in self.input_list][0], 

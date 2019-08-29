@@ -66,6 +66,7 @@ xlimits = np.array([
 # Initial surrogate call
 interp = om.MetaModelUnStructuredComp(default_surrogate=om.ResponseSurface())
 # Inputs
+# test for missing training data parameter
 interp.add_input('Mach', 0., training_data=xt[:, 0])
 interp.add_input('Altitude', 0., training_data=xt[:, 1])
 interp.add_input('Throttle', 0., training_data=xt[:, 2])
@@ -79,24 +80,6 @@ prob = om.Problem()
 prob.model.add_subsystem('interp', interp)
 prob.setup()
 
-# options._dict to get data
-# _surrogate_input_names to get inputs
-# _surrogate_output_names to get outputs
-info = {
-        'resolution':50,
-        'input_names':{
-            'Mach': [0, 0.9],
-            'Altitude': [0, 43],
-            'Throttle': [0, 1]},
-        'bounds':xlimits.tolist(),
-        'interp': interp.options._dict,
-        'scatter_points':[xt, yt],
-        'surrogate_name': 'interp',
-        'output_names':[
-            'Thrust',
-            'TSFC'],
-        'prob': prob,
-}
 
 viz = UnstructuredMetaModelVisualization(prob)
 
