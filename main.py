@@ -14,38 +14,31 @@ from openmdao.devtools.debug import profiling
 # Misc Imports
 import numpy as np
 import openmdao.api as om
-import matplotlib.pyplot as plt
 import math
 from scipy.spatial import cKDTree
-import itertools
 from collections import OrderedDict
 
 
 class UnstructuredMetaModelVisualization(object):
     
-    def __init__(self, prob, resolution=50):
+    def __init__(self, prob, surrogate_comp, resolution=50):
 
         self.prob = prob
-        try:
-            self.subsystem_name = prob.model._static_subsystems_allprocs[0].name
-        except:
-            msg = "Subsystem does not exist"
-            raise AttributeError(msg)
-
+        self.surrogate_comp = surrogate_comp
         self.n = resolution
         
         # Create list of inputs
-        self.input_list = [i[0] for i in self.prob.model.interp._surrogate_input_names]
+        self.input_list = [i[0] for i in self.surrogate_comp._surrogate_input_names]
         if len(self.input_list) < 2:
             raise ValueError('Must have more than one input value')
         
-        self.output_list = [i[0] for i in self.prob.model.interp._surrogate_output_names]
+        self.output_list = [i[0] for i in self.surrogate_comp._surrogate_output_names]
 
         # Pair input list names with their respective data
         self.input_data = {}
         for title in self.input_list:
             try:
-                self.input_data[title] = {i for i in self.prob.model.interp.options[str('train:' + title)]}
+                self.input_data[title] = {i for i in self.surrogate_comp.options[str('train:' + title)]}
             except:
                 msg = "No training data present for one or more parameters"
                 raise TypeError(msg)
@@ -98,7 +91,7 @@ class UnstructuredMetaModelVisualization(object):
         self.slider_source = ColumnDataSource(data=self.input_data_dict)
         self.bot_plot_source = ColumnDataSource(data=dict(bot_slice_x=np.repeat(0,self.n), bot_slice_y=np.repeat(0,self.n)))
         self.right_plot_source = ColumnDataSource(data=dict(left_slice_x=np.repeat(0,self.n), left_slice_y=np.repeat(0,self.n))) 
-        self.source = ColumnDataSource(data=dict(x=np.linspace(0,100, self.n), y=np.linspace(0,100, self.n))) # Linspaces are just placeholders
+        self.source = ColumnDataSource(data=dict(x=np.repeat(0,self.n), y=np.repeat(0,self.n)))
 
         # Text input to change the distance of reach when searching for nearest data points
         self.scatter_distance = TextInput(value="0.1", title="Scatter Distance")
@@ -141,10 +134,10 @@ class UnstructuredMetaModelVisualization(object):
         # Pair data points with their respective prob name. Loop to make predictions
         for idx, tup in enumerate(inputs):
             for name, val in zip(data.keys(), tup):
-                self.prob[self.subsystem_name + '.' + name] = val
+                self.prob[self.surrogate_comp.name + '.' + name] = val
             self.prob.run_model()
             for i in self.output_list:
-                outputs[i].append(float(self.prob[self.subsystem_name + '.' + i]))
+                outputs[i].append(float(self.prob[self.surrogate_comp.name + '.' + i]))
 
         return self.stack_outputs(outputs)
 
@@ -401,8 +394,8 @@ class UnstructuredMetaModelVisualization(object):
 
         # xt contains
         # [x1, x2, x3, x4]
-        xt = self.prob.model.interp._training_input # Input Data
-        yt = np.squeeze(self.stack_outputs(self.prob.model.interp._training_output), axis=1) # Output Data
+        xt = self.surrogate_comp._training_input # Input Data
+        yt = np.squeeze(self.stack_outputs(self.surrogate_comp._training_output), axis=1) # Output Data
         output_variable = self.output_list.index(self.output_value.value)
         data = np.zeros((0, 8))
 

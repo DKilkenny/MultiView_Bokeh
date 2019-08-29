@@ -80,7 +80,6 @@ prob = om.Problem()
 prob.model.add_subsystem('interp', interp)
 prob.setup()
 
-
-viz = UnstructuredMetaModelVisualization(prob)
+viz = UnstructuredMetaModelVisualization(prob, interp)
 
 
